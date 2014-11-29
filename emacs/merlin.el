@@ -493,6 +493,14 @@ return DEFAULT or the value associated to KEY."
      (member (file-name-extension buffer-file-name)
              merlin-error-after-save))))
 
+(defun merlin-toggle-error-faces (state)
+  "Disable or enable error coloring"
+  (if state
+    (progn (face-remap-reset-base 'merlin-compilation-warning-face)
+           (face-remap-reset-base 'merlin-compilation-error-face))
+    (progn (face-remap-set-base 'merlin-compilation-warning-face nil)
+           (face-remap-set-base 'merlin-compilation-error-face nil))))
+
 (defun merlin-toggle-view-errors ()
   "Toggle the viewing of errors in the buffer."
   (interactive)
@@ -835,50 +843,27 @@ Return nil if there is no error on this line."
 
 (defvar merlin-error-timer nil
   "Timer to show the error at point in the echo area.")
+(make-variable-buffer-local 'merlin-error-timer)
 
-(defun merlin-error-start-timer ()
+(defun merlin-error-timer ()
+  "Action associated merlin-error-timer"
+  (setq merlin-error-timer nil)
+  (merlin-toggle-error-faces nil))
+
+(defun merlin-error-start-timer (duration)
   "Start the error timer as an idle timer.
 When it expires, the current Merlin error is shown in the echo
 area."
+  (merlin-toggle-error-faces t)
   (merlin-error-cancel-timer)
   (setq merlin-error-timer
-        (run-with-idle-timer 0.1 'repeat 'merlin-show-error-on-current-line))
-  (merlin-error-start-gc-timer))
+        (run-with-idle-timer duration nil 'merlin-error-timer)))
 
 (defun merlin-error-cancel-timer ()
   "Cancel the error display timer."
   (when merlin-error-timer
     (cancel-timer merlin-error-timer)
     (setq merlin-error-timer nil)))
-
-(defvar merlin-error-gc-timer nil
-  "Timer to collect unused Merlin timers.
-This triggers `merlin-error-gc' to check whether there are any
-buffers left using Merlin.  If not, we can cancel this timer and
-`merlin-error-timer'.")
-
-(defun merlin-error-gc ()
-  "Check whether there are still buffers using Merlin.
-Clean up Merlin timers if there are none."
-  (when (not (member t
-                     (mapcar
-                      (lambda (buf) (buffer-local-value 'merlin-mode buf))
-                      (buffer-list))))
-    ;; No buffer uses Merlin anymore. Kill all hu^H^Htimers.
-    (merlin-error-cancel-timer)
-    (merlin-error-cancel-gc-timer)))
-
-(defun merlin-error-start-gc-timer ()
-  "Start the Merlin GC timer (see `merlin-error-gc-timer').
-The timer fires every 10 seconds of idle time."
-  (merlin-error-cancel-gc-timer)
-  (setq merlin-error-gc-timer (run-at-time 10 10 'merlin-error-gc)))
-
-(defun merlin-error-cancel-gc-timer ()
-  "Cancel the Merlin GC timer (see `merlin-error-gc-timer')."
-  (when merlin-error-gc-timer
-    (cancel-timer merlin-error-gc-timer)
-    (setq merlin-error-gc-timer nil)))
 
 (defun merlin-chomp (str)
   "Remove whitespace at the beginning and end of STR."
@@ -899,16 +884,6 @@ The timer fires every 10 seconds of idle time."
         (when (or (not err) (< (car d-) (car d))
                   (and (= (car d-) (car d)) (< (cdr d-) (cdr d))))
           (setq d d-) (setq err err-))))))
-
-(defun merlin-show-error-on-current-line ()
-  "Show the error of the current line in the echo area.
-  If there is no error, do nothing."
-  (when (and merlin-mode (not (current-message)))
-    (let* ((errors (overlays-in (line-beginning-position) (line-end-position)))
-           (err nil))
-      (setq errors (remove nil (mapcar 'merlin--overlay-pending-error errors)))
-      (setq err (merlin--error-at-position (point) errors))
-      (when err (message (merlin-chomp (cdr (assoc 'message err))))))))
 
 (defun merlin--overlay-next-property-set (point prop &optional limit)
   "Find next point where PROP is set (like next-single-char-property-change but ensure that prop is not-nil)."
@@ -1030,6 +1005,7 @@ The timer fires every 10 seconds of idle time."
     (dolist (err errors)
       (let* ((bounds (cdr (assoc 'bounds err)))
              (overlay (make-overlay (car bounds) (cdr bounds))))
+        (overlay-put overlay 'help-echo (cdr (assoc 'message err)))
         (overlay-put overlay 'merlin-kind 'error)
         (overlay-put overlay 'merlin-pending-error err)
         (push #'merlin--kill-error-if-edited
@@ -1044,7 +1020,8 @@ The timer fires every 10 seconds of idle time."
                                            'exclamation-mark
                                            "!"
                                            'merlin-compilation-error-face)))
-        overlay))))
+        overlay))
+    (merlin-error-start-timer 2)))
 
 (defun merlin--error-check (view-errors-p)
   "Check for errors.
@@ -1919,8 +1896,7 @@ Short cuts:
 (add-hook 'merlin-mode-hook
           (lambda ()
             (add-hook 'after-save-hook 'merlin-after-save
-                      nil 'make-it-local)
-            (merlin-error-start-timer)))
+                      nil 'make-it-local)))
 
 (defun merlin-setup-auto-complete ()
   "Integrate merlin to auto-complete with sane defaults"
