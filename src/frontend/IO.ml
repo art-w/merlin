@@ -357,6 +357,8 @@ module Protocol_io = struct
       Request (Path (source_or_build var, add_or_remove action, string_list pathes))
     | [`String "project"; `String "get"] ->
       Request (Project_get)
+    | [`String "users"; `String "of"; `String "module"; `String name] ->
+      Request (Users_of_module name)
     | [`String "version"] ->
       Request (Version)
     | _ -> invalid_arguments ()
@@ -431,6 +433,8 @@ module Protocol_io = struct
         | Occurrences _, locations ->
           `List (List.map locations
                    ~f:(fun loc -> with_location loc []))
+        | Users_of_module _, users ->
+          json_of_string_list users
         | Version, version ->
           `String version
       end]
