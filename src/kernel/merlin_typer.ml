@@ -90,7 +90,7 @@ module P = struct
         | `fake str ->
           let structure,_,_ =
             Parsing_aux.catch_warnings (ref [])
-              (fun () -> Typemod.type_structure t.env [str] loc)
+              (fun () -> Typemod.type_structure t.env str loc)
           in
           let browse =
             BrowseT.of_node ~loc ~env:t.env (BrowseT.Structure structure)
@@ -106,7 +106,7 @@ module P = struct
       let snapshot = Btype.snapshot () in
       {t with snapshot; exns = exn :: caught catch @ t.exns}
 
-  let rewrite loc = function
+  let rewrite_raw loc = function
     | Raw_typer.Functor_argument (id,mty) ->
       let mexpr = Ast_helper.Mod.structure ~loc [] in
       let mexpr = Ast_helper.Mod.functor_ ~loc id mty mexpr in
@@ -133,6 +133,13 @@ module P = struct
       `str str
     | Raw_typer.Signature sg ->
       `sg sg
+
+  let rewrite_ppx = function
+    | `str str -> `str (Pparse.apply_rewriters_str ~tool_name:"merlin" str)
+    | `sg sg -> `sg (Pparse.apply_rewriters_sig ~tool_name:"merlin" sg)
+    | `fake str -> `str (Pparse.apply_rewriters_str ~tool_name:"merlin" [str])
+
+  let rewrite loc raw = rewrite_ppx (rewrite_raw loc raw)
 
   let frame (_,catch) f t =
     let module Frame = Merlin_parser.Frame in
