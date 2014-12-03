@@ -159,22 +159,29 @@ end
 
 module I = Merlin_parser.Integrate (P)
 
-type t = {
+type state = {
   btype_cache : Btype.cache;
   env_cache   : Env.cache;
+  ast_cache   : Ast_mapper.cache; (* PPX cookies *)
   extensions  : Extension.set;
-  typer       : I.t;
-  stamp       : bool ref list;
+  stamp : bool ref list;
+}
+
+type t = {
+  state : state;
+  typer : I.t;
 }
 
 let fluid_btype = Fluid.from_ref Btype.cache
 let fluid_env = Fluid.from_ref Env.cache
+let fluid_ast = Fluid.from_ref Ast_mapper.cache
 
-let protect_typer ~btype ~env f =
+let protect_typer ~btype_cache ~env_cache ~ast_cache f =
   let caught = ref [] in
   let (>>=) f x = f x in
-  Fluid.let' fluid_btype btype >>= fun () ->
-  Fluid.let' fluid_env env >>= fun () ->
+  Fluid.let' fluid_btype btype_cache >>= fun () ->
+  Fluid.let' fluid_env env_cache >>= fun () ->
+  Fluid.let' fluid_ast ast_cache >>= fun () ->
   Either.join (Parsing_aux.catch_warnings caught >>= fun () ->
                Typing_aux.catch_errors caught >>= fun () ->
                f caught)
@@ -182,40 +189,35 @@ let protect_typer ~btype ~env f =
 let fresh ~unit_name ~stamp extensions =
   let btype_cache = Btype.new_cache () in
   let env_cache = Env.new_cache ~unit_name in
-  let result = protect_typer ~btype:btype_cache ~env:env_cache (fun exns ->
-    Either.try' (fun () -> I.empty (extensions,exns))
-  )
-  in
-  {
-    stamp;
-    typer = Either.get result;
-    extensions; env_cache; btype_cache;
-  }
+  let ast_cache = Ast_mapper.new_cache () in
+  let result = protect_typer ~btype_cache ~env_cache ~ast_cache
+      (fun exns -> Either.try' (fun () -> I.empty (extensions,exns))) in
+  let state = { stamp; extensions; env_cache; btype_cache; ast_cache } in
+  { state; typer = Either.get result; }
 
 let get_incremental _state x = x
 let get_value = I.value
 
 let update parser t =
   let result =
-    protect_typer ~btype:t.btype_cache ~env:t.env_cache (fun exns ->
-    Either.try' (fun () ->
-      let state = (t.extensions,exns) in
-      I.update' state parser (get_incremental state t.typer)
-    )
-  )
+    let {btype_cache; env_cache; ast_cache; extensions} = t.state in
+    protect_typer ~btype_cache ~env_cache ~ast_cache
+      (fun exns ->
+         Either.try' (fun () ->
+             let state = (extensions,exns) in
+             I.update' state parser (get_incremental state t.typer)))
   in
   {t with typer = Either.get result}
 
 let env t = (get_value t.typer).P.env
 let contents t = (get_value t.typer).P.contents
 let exns t = (get_value t.typer).P.exns
-let extensions t = t.extensions
+let extensions t = t.state.extensions
 
-let is_valid t =
-  List.for_all ~f:(!) t.stamp &&
-  match
-    protect_typer ~btype:t.btype_cache ~env:t.env_cache
-      (fun _ -> Either.try' Env.check_cache_consistency)
+let is_valid {state = {stamp; btype_cache; env_cache; ast_cache}} =
+  List.for_all ~f:(!) stamp &&
+  match protect_typer ~btype_cache ~env_cache ~ast_cache
+          (fun _ -> Either.try' Env.check_cache_consistency)
   with
   | Either.L _exn -> false
   | Either.R result -> result
@@ -227,6 +229,8 @@ let dump ppf t =
   List.iter (Raw_typer.dump ppf) ts
 
 let with_typer t f =
-  Fluid.let' fluid_btype t.btype_cache (fun () ->
-  Fluid.let' fluid_env t.env_cache (fun () ->
-  f t))
+  let {btype_cache; env_cache; ast_cache} = t.state in
+  Fluid.let' fluid_btype btype_cache (fun () ->
+  Fluid.let' fluid_env env_cache (fun () ->
+  Fluid.let' fluid_ast ast_cache (fun () ->
+  f t)))
