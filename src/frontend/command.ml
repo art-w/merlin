@@ -310,9 +310,15 @@ let dispatch (state : state) =
   | (Expand_prefix (prefix, pos) : a request) ->
     with_typer state (
       fun typer ->
-        let node = Completion.node_at typer pos in
-        let env  = node.BrowseT.t_env in
-        let lidents, last = Expansion.get_lidents env prefix in
+        let env =
+          let node = Completion.node_at typer pos in
+          node.BrowseT.t_env in
+        let lidents, last =
+          let project = Buffer.project state.buffer in
+          let global_modules = Project.global_modules project in
+          let ts = Expansion.explore ~global_modules env in
+          Expansion.get_lidents ts prefix
+        in
         let validate =
           let last = Str.regexp (Expansion.regex_of_path_prefix last) in
           fun _ _ s -> Str.string_match last s 0

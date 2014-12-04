@@ -9,12 +9,20 @@ let rec explore_node lident env =
   in
   Env.fold_modules add_module (Some lident) env []
 
-let explore env =
-  let add_module name _ _ l =
-    let lident = Longident.Lident name in
-    Trie (name, lident, lazy (explore_node lident env)) :: l
+let explore ?(global_modules=[]) env =
+  let seen =
+    let tbl = Hashtbl.create 7 in
+    fun name -> Hashtbl.mem tbl name || (Hashtbl.add tbl name (); false)
   in
-  Env.fold_modules add_module None env []
+  let add_module name l =
+    if seen name then l
+    else
+      let lident = Longident.Lident name in
+      Trie (name, lident, lazy (explore_node lident env)) :: l
+  in
+  let add_module' name _ _ l = add_module name l in
+  List.fold_left' ~f:add_module global_modules
+    ~init:(Env.fold_modules add_module' None env [])
 
 let regex_of_path_prefix pattern =
   let buf = Buffer.create 16 in
@@ -62,7 +70,7 @@ let rec to_lidents acc = function
 
 let to_lidents ts = to_lidents [] ts
 
-let get_lidents env path =
+let get_lidents ts path =
   let open Longident in
   let lident = parse path in
   let lident, last = match lident with
@@ -77,7 +85,6 @@ let get_lidents env path =
     | Ldot (l, id) -> components (id :: acc) l
   in
   let components = components [] lident in
-  let ts = explore env in
   let ts = filter components ts in
   let lidents = match to_lidents ts with
     | [] -> [None]
