@@ -31,6 +31,10 @@ if !exists("g:merlin_close_error_list")
   let g:merlin_close_error_list = 1
 endif
 
+if !exists("g:merlin_dwim_completion")
+  let g:merlin_dwim_completion = 1
+endif
+
 let s:current_dir=expand("<sfile>:p:h")
 py import sys, vim
 py if not vim.eval("s:current_dir") in sys.path:
@@ -196,30 +200,35 @@ function! merlin#Complete(findstart,base)
         break
       endif
     endwhile
+
     " Return the column of the last word, which is going to be changed.
-    " Remember the text that comes before it in s:prepended.
+    " Remember the text that comes before it in s:compl_prefix.
     if lastword == -1
       let s:compl_prefix = ''
-      let s:compl_base = -1
-      let s:compl_result = []
-      let s:compl_dwim = 0
-      return start
+    else
+      let s:compl_prefix = strpart(line, start, lastword - start)
     endif
-    let s:compl_prefix = strpart(line, start, lastword - start)
+
+    " Query completion
     let s:compl_base = strpart(line, start, col('.') - 1 - start)
     let s:compl_result = []
     py merlin.vim_complete_cursor(vim.eval("s:compl_base"),"s:compl_result")
-    let s:compl_dwim = s:compl_result == []
-  
+   
+    " If empty, switch to dwim
+    let s:compl_dwim = g:merlin_dwim_completion && s:compl_result == []
     if s:compl_dwim
-      " No completion, switch to dwim
       let s:compl_prefix = ''
       py merlin.vim_expand_prefix(vim.eval("s:compl_base"),"s:compl_result")
-      return start
     endif
-    return lastword
+
+    if lastword == -1 || s:compl_dwim
+      return start
+    else
+      return lastword
+    end
   endif
 
+  " If prefix changed, update completion
   let base = s:compl_prefix . a:base
   if base != s:compl_base
     let s:compl_base = base
