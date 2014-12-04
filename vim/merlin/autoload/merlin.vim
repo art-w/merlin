@@ -199,19 +199,39 @@ function! merlin#Complete(findstart,base)
     " Return the column of the last word, which is going to be changed.
     " Remember the text that comes before it in s:prepended.
     if lastword == -1
-      let s:prepended = ''
+      let s:compl_prefix = ''
+      let s:compl_base = -1
+      let s:compl_result = []
+      let s:compl_dwim = 0
       return start
     endif
-    let s:prepended = strpart(line, start, lastword - start)
+    let s:compl_prefix = strpart(line, start, lastword - start)
+    let s:compl_base = strpart(line, start, col('.') - 1 - start)
+    let s:compl_result = []
+    py merlin.vim_complete_cursor(vim.eval("s:compl_base"),"s:compl_result")
+    let s:compl_dwim = s:compl_result == []
+  
+    if s:compl_dwim
+      " No completion, switch to dwim
+      let s:compl_prefix = ''
+      py merlin.vim_expand_prefix(vim.eval("s:compl_base"),"s:compl_result")
+      return start
+    endif
     return lastword
   endif
 
-  let base = s:prepended . a:base
-  let l:props = []
-  py merlin.vim_complete_cursor(vim.eval("base"),"l:props")
+  let base = s:compl_prefix . a:base
+  if base != s:compl_base
+    let s:compl_base = base
+    if s:compl_dwim
+      py merlin.vim_expand_prefix(vim.eval("base"),"s:compl_result")
+    else
+      py merlin.vim_complete_cursor(vim.eval("base"),"s:compl_result")
+    endif
+  endif
 
   " Workaround https://github.com/the-lambda-church/merlin/issues/223 vim 704
-  return l:props
+  return s:compl_result
   "if v:version <= 703
   "  return l:props
   "else
