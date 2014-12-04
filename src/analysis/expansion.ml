@@ -61,14 +61,14 @@ let filter path ts =
   in
   aux_ts ts path
 
-let rec to_lidents acc = function
-  | Trie (_, lident, lazy []) :: ts ->
-    to_lidents (lident :: acc) ts
+let rec to_lidents len acc = function
+  | Trie (_, lident, _) :: ts when len <= 0 ->
+    to_lidents len (lident :: acc) ts
   | Trie (_, _, lazy ts') :: ts ->
-    to_lidents (to_lidents acc ts') ts
+    to_lidents len (to_lidents (len - 1) acc ts') ts
   | [] -> acc
 
-let to_lidents ts = to_lidents [] ts
+let to_lidents len ts = to_lidents len [] ts
 
 let get_lidents ts path =
   let open Longident in
@@ -86,7 +86,7 @@ let get_lidents ts path =
   in
   let components = components [] lident in
   let ts = filter components ts in
-  let lidents = match to_lidents ts with
+  let lidents = match to_lidents (List.length components - 1) ts with
     | [] -> [None]
     | xs -> List.map (fun x -> Some x) xs
   in
