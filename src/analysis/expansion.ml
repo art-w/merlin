@@ -62,7 +62,7 @@ let filter path ts =
   aux_ts ts path
 
 let rec to_lidents len acc = function
-  | Trie (_, lident, _) :: ts when len <= 0 ->
+  | Trie (_, lident, _) :: ts when len = 0 ->
     to_lidents len (lident :: acc) ts
   | Trie (_, _, lazy ts') :: ts ->
     to_lidents len (to_lidents (len - 1) acc ts') ts
@@ -84,10 +84,11 @@ let get_lidents ts path =
     | Lapply _ -> assert false
     | Ldot (l, id) -> components (id :: acc) l
   in
-  let components = components [] lident in
-  let ts = filter components ts in
-  let lidents = match to_lidents (List.length components - 1) ts with
+  let lidents = match components [] lident with
     | [] -> [None]
-    | xs -> List.map (fun x -> Some x) xs
+    | components ->
+      let ts = filter components ts in
+      let lidents = to_lidents (List.length components - 1) ts in
+      List.map (fun x -> Some x) lidents
   in
   lidents, last
