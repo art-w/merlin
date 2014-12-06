@@ -1,4 +1,4 @@
-FLG -debug destruct:debug,/tmp/merlin.log
+# FLG -debug destruct:debug,/tmp/merlin.log
 PRJ merlin
 S src
 S src/analysis
