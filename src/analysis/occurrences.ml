@@ -124,7 +124,7 @@ let get_external_locs ~(config : Mconfig.t) ~current_buffer_path uid =
         file;
       let external_locs =
         try
-          let external_index = Index_cache.read file in
+          let external_index, _ = Index_cache.read file in
           Index_format.Uid_map.find_opt uid external_index.defs
           |> Option.map ~f:(fun uid_locs -> (external_index, uid_locs))
         with Index_format.Not_an_index _ | Sys_error _ ->
