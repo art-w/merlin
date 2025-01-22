@@ -68,7 +68,7 @@ let () =
       | Some (_, fd) -> close_in fd)
 
 let force_open_store store =
-  let fd = open_in store.filename in
+  let fd = open_in_bin store.filename in
   last_open_store := Some (store, fd);
   fd
 
